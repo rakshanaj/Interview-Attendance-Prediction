@@ -1,0 +1,472 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(stringr)
+library(lubridate)
+library(caTools)
+library(randomForest)
+library(caret)
+library(e1071)
+
+df <- read_csv('Interview.csv')
+head(df)
+
+```
+
+
+```{r}
+#removing spaces
+names(df) <- gsub(" ","_",names(df))
+
+names(df)
+
+```
+
+
+```{r}
+
+unique(df$Industry)
+table(df$Industry)
+temp<-df%>%filter(Industry!="NA")%>%group_by(Industry)%>%summarise(count=n())%>%arrange(desc(count))
+
+```
+
+
+```{r}
+
+ggplot(temp,aes(reorder(Industry,count),count,fill=Industry))+
+  geom_bar(stat="identity",position="dodge",show.legend=F)+
+  coord_flip()+
+  geom_text(aes(label = count), hjust = -0.1, size = 2.5)+
+xlab("Industry vertical")+
+ylab("Number of Interviews")+
+ggtitle("Number of Interviews Per Industry")
+
+```
+
+
+```{r}
+#cleanig each attribute one by one
+unique(df["Client_name"])
+
+df$Client_name<-ifelse(df$Client_name=="Standard Chartered Bank Chennai","Standard Chartered Bank",df$Client_name)
+df$Client_name<-ifelse(df$Client_name=="Aon hewitt Gurgaon","Aon hewitt",df$Client_name)
+df$Client_name<-tolower(df$Client_name)
+
+```
+
+
+```{r}
+countperindustry<-df%>%
+filter(Client_name!=" ")%>%
+  group_by(Client_name)%>%
+  summarise(count=n())%>%
+  arrange(desc(count))
+
+countperindustry
+
+```
+
+
+```{r}
+
+ggplot(head(countperindustry,10),aes(reorder(Client_name,count),count,fill=Client_name))+
+         geom_bar(stat="identity",position="dodge",show.legend=F)+
+         coord_flip()+
+         geom_text(aes(label=count),hjust=-0.1,size=2.5)+
+xlab("Number of Interviews")+
+ylab("Client Name")+
+ggtitle("Number of Interviews per client")
+
+```
+
+
+```{r}
+unique(df$Location)
+
+#Cleansing the location data
+
+df$Location<-tolower(df$Location)
+df$Location<-ifelse(df$Location=="gurgaonr","gurgaon",df$Location)
+df$Location<-ifelse(df$Location=="- cochin-","cochin",df$Location)
+
+unique(df$Location)
+```
+
+
+```{r}
+#cleanig dat format
+#converting the column to character data type
+
+#df$Date_of_Interview
+
+df$Date_of_Interview<-as.character(df$Date_of_Interview)
+
+#Removing the time component if available in the date of interview column
+
+df$Date_of_Interview<-ifelse(str_detect(df$Date_of_Interview ,'&')==TRUE,sapply(strsplit(df$Date_of_Interview, "&"), "[", 1),df$Date_of_Interview)
+
+
+mdy<-mdy(df$Date_of_Interview)
+dmy<-dmy(df$Date_of_Interview)
+mdy[is.na(mdy)] <- dmy[is.na(mdy)]
+
+df$Date_of_Interview<-mdy
+
+#Check if there are any NA's created.
+sum(is.na(df$Date_of_Interview))
+
+#Lookinga the record with NA value.
+df[is.na(df$Date_of_Interview),]
+```
+
+
+```{r}
+#Adding day of the week column from the date column.
+df$dayofweek<-weekdays(df$Date_of_Interview)
+
+#Looking at the number of interviews scheduled per day of the week
+interviewsperdayofweek<-df%>%
+group_by(dayofweek)%>%
+summarise(count=n())
+
+#Plotting the number of interviews per day of the week
+ggplot(interviewsperdayofweek,aes(reorder(dayofweek,-count),y=count))+
+geom_bar(stat="identity",fill="#b8b3b2")+
+geom_text(aes(label=count),color="blue",hjust=-0.8,size=4.5)+
+theme_bw()+
+xlab("Weekday")+
+ylab("Number of Interviews")+
+ggtitle("Number of interviews per week")
+
+```
+
+
+```{r}
+
+unique(df$Position_to_be_closed)
+
+df$Position_to_be_closed<-tolower(df$Position_to_be_closed)
+df$Position_to_be_closed<-as.factor(df$Position_to_be_closed)
+```
+
+
+```{r}
+
+table(df$Candidate_Current_Location)
+df$Candidate_Current_Location<-tolower(df$Candidate_Current_Location)
+df$Candidate_Current_Location<-ifelse(df$Candidate_Current_Location=="- cochin-","cochin",df$Candidate_Current_Location)
+
+```
+
+
+
+
+
+```{r}
+table(df$Candidate_Job_Location)
+df$Candidate_Job_Location<-tolower(df$Candidate_Job_Location)
+df$Candidate_Job_Location<-ifelse(df$Candidate_Job_Location=="- cochin-","cochin",df$Candidate_Job_Location)
+
+
+```
+
+
+```{r}
+df$JobLocationFlag<-ifelse(df$Candidate_Current_Location==df$Candidate_Job_Location,1,0)
+
+df$JobLocationFlag<-as.factor(df$JobLocationFlag)
+
+table(df$JobLocationFlag)
+```
+
+
+```{r}
+table(df$Interview_Type)
+df$Interview_Type<-ifelse(df$Interview_Type %in% c("Sceduled walkin","Scheduled Walk In","Scheduled Walkin"),"Scheduled Walkin",df$Interview_Type)
+table(df$Interview_Type)
+
+
+```
+
+
+```{r}
+#Converting the gender colun to factor as it is a categorical data type
+df$Gender<-as.factor(df$Gender)
+
+```
+
+
+```{r}
+table(df$Have_you_obtained_the_necessary_permission_to_start_at_the_required_time)
+
+#Changing column name
+
+colnames(df)[colnames(df)=="Have_you_obtained_the_necessary_permission_to_start_at_the_required_time"] <- "GotPermission"
+
+#Changing the text name in the column to lower case
+df$GotPermission<-tolower(df$GotPermission)
+
+#Tranfroming yet to confirm and not yet confirm to yet to confirm
+df$GotPermission <-ifelse(df$GotPermission %in% c("not yet","yet to confirm"),"yet to confirm",df$GotPermission)
+df$GotPermission <-ifelse(df$GotPermission %in% c("na"),"no",df$GotPermission)
+
+#verifying the changes
+table(df$GotPermission)
+```
+
+
+```{r}
+
+#converting the column to factor variable
+df$GotPermission<-as.factor(df$GotPermission)
+
+```
+
+
+```{r}
+table(df$Hope_there_will_be_no_unscheduled_meetings)
+
+colnames(df)[colnames(df)=="Hope_there_will_be_no_unscheduled_meetings"]<-"UnscheduledMeetingFlag"
+
+#convert all the text to lower case
+df$UnscheduledMeetingFlag<-tolower(df$UnscheduledMeetingFlag)
+
+#Changing flag values like not sure , cant say to not sure only.
+df$UnscheduledMeetingFlag<-ifelse(df$UnscheduledMeetingFlag %in% c("not sure","cant say"),"not sure",df$UnscheduledMeetingFlag)
+df$UnscheduledMeetingFlag<-ifelse(df$UnscheduledMeetingFlag %in% c("na"),"no",df$UnscheduledMeetingFlag)
+
+#verifying if the changes have been made
+table(df$UnscheduledMeetingFlag)
+
+#Converting the column to a factor data type
+df$UnscheduledMeetingFlag<-as.factor(df$UnscheduledMeetingFlag)
+
+```
+
+
+```{r}
+
+colnames(df)[colnames(df)=="Can_I_Call_you_three_hours_before_the_interview_and_follow_up_on_your_attendance_for_the_interview"]<-"Followupcallrequired"
+colnames(df)[colnames(df)=="Can_I_have_an_alternative_number/_desk_number._I_assure_you_that_I_will_not_trouble_you_too_much"]<-"AlternateNumberGiven"
+colnames(df)[colnames(df)=="Have_you_taken_a_printout_of_your_updated_resume._Have_you_read_the_JD_and_understood_the_same"]<-"Printouttaken_JDUnderstanding"
+colnames(df)[colnames(df)=="Are_you_clear_with_the_venue_details_and_the_landmark."]<-"ClarityofVenue"
+colnames(df)[colnames(df)=="Has_the_call_letter_been_shared"]<-"CallLetterRecieved"
+```
+
+
+```{r}
+
+#looking at each of the columns
+table(df$Followupcallrequired)
+
+df$Followupcallrequired<-tolower(df$Followupcallrequired)
+df$Followupcallrequired<-ifelse(df$Followupcallrequired=="no dont","no",df$Followupcallrequired)
+df$Followupcallrequired<-ifelse(df$Followupcallrequired=="na","no",df$Followupcallrequired)
+df$Followupcallrequired<-as.factor(df$Followupcallrequired)
+
+table(df$Followupcallrequired)
+```
+
+
+```{r}
+
+table(df$AlternateNumberGiven)
+
+#AlternateNumberGiven
+df$AlternateNumberGiven<-tolower(df$AlternateNumberGiven)
+df$AlternateNumberGiven<-ifelse(df$AlternateNumberGiven=="no i have only thi number","no",df$AlternateNumberGiven)
+df$AlternateNumberGiven<-ifelse(df$AlternateNumberGiven %in% c("na"),"no",df$AlternateNumberGiven)
+df$AlternateNumberGiven<-as.factor(df$AlternateNumberGiven)
+
+table(df$AlternateNumberGiven)
+```
+
+
+```{r}
+table(df$Printouttaken_JDUnderstanding)
+
+#Printouttaken_JDUnderstanding
+df$Printouttaken_JDUnderstanding<-ifelse(df$Printouttaken_JDUnderstanding %in% c("No- will take it soon","Not yet","Not Yet"),"no",df$Printouttaken_JDUnderstanding)
+df$Printouttaken_JDUnderstanding<-ifelse(df$Printouttaken_JDUnderstanding %in% c("na"),"no",df$Printouttaken_JDUnderstanding)
+df$Printouttaken_JDUnderstanding<-tolower(df$Printouttaken_JDUnderstanding)
+df$Printouttaken_JDUnderstanding<-as.factor(df$Printouttaken_JDUnderstanding)
+
+table(df$Printouttaken_JDUnderstanding)
+
+```
+
+
+```{r}
+#ClarityofVenue
+table(df$ClarityofVenue)
+
+#Cleaning the data in Clarityofvenue column
+
+df$ClarityofVenue<-ifelse(df$ClarityofVenue %in% c("No- I need to check"),"no",df$ClarityofVenue)
+df$ClarityofVenue<-ifelse(df$ClarityofVenue %in% c("Na","na"),"no",df$ClarityofVenue)
+df$ClarityofVenue<-tolower(df$ClarityofVenue)
+df$ClarityofVenue<-as.factor(df$ClarityofVenue)
+
+table(df$ClarityofVenue)
+
+```
+
+
+```{r}
+#CallLetterRecieved
+table(df$CallLetterRecieved)
+
+df$CallLetterRecieved<-ifelse(df$CallLetterRecieved %in% c("Havent Checked","Need To Check","Not sure","Not Sure","Not yet","Yet to Check"),"Yet to Check",df$CallLetterRecieved)
+df$CallLetterRecieved<-ifelse(df$CallLetterRecieved %in% c("na","Na"),"no",df$CallLetterRecieved)
+df$CallLetterRecieved<-tolower(df$CallLetterRecieved)
+df$CallLetterRecieved<-as.factor(df$CallLetterRecieved)
+
+table(df$CallLetterRecieved)
+```
+
+
+```{r}
+table(df$Expected_Attendance)
+
+#Cleansing data in the expected attendance column
+df$Expected_Attendance<-ifelse(df$Expected_Attendance %in% c("10.30 Am","11:00 AM"),"Yes",df$Expected_Attendance)
+df$Expected_Attendance<-tolower(df$Expected_Attendance)
+df$Expected_Attendance<-as.factor(df$Expected_Attendance)
+
+#verify the data
+table(df$Expected_Attendance)
+```
+
+
+```{r}
+table(df$Observed_Attendance)
+df$Observed_Attendance<-tolower(df$Observed_Attendance)
+df$Observed_Attendance<-as.factor(df$Observed_Attendance)
+table(df$Observed_Attendance)
+```
+
+
+```{r}
+table(df$Marital_Status)
+
+df$Marital_Status<-as.factor(df$Marital_Status)
+```
+
+
+```{r}
+#Removing unwanted columns like X24, X25, X26, X27 and X28
+
+df$X24<-NULL
+df$X25<-NULL
+df$X26<-NULL
+df$X27<-NULL
+df$X28<-NULL
+```
+
+
+```{r}
+head(df)
+```
+
+
+```{r}
+df$Industry<-as.factor(df$Industry)
+df$Nature_of_Skillset<-as.factor(df$Nature_of_Skillset)
+df$Location<-as.factor(df$Location)
+df$UnscheduledMeetingFlag<-as.factor(df$UnscheduledMeetingFlag)
+df$ClarityofVenue<-as.factor(df$ClarityofVenue)
+df$Marital_Status<-as.factor(df$Marital_Status)
+df$dayofweek<-as.factor(df$dayofweek)
+```
+
+
+```{r}
+df$Candidate_Current_Location<-NULL
+
+
+#end of Data cleaning!
+```
+
+
+```{r}
+#Adding set.seed for reproducability
+set.seed(100)
+
+#Create a new dataframe from the main dataset to create a descision tree model
+df_model_new<-df%>%select (Industry,ClarityofVenue,Location,Position_to_be_closed,Interview_Type,Gender,GotPermission,Printouttaken_JDUnderstanding,CallLetterRecieved,Expected_Attendance,Observed_Attendance,dayofweek)
+
+
+```
+
+
+```{r}
+#Splitting the data into test and train . I am using 70% of data for training dataset and 30% of data for testing
+split = sample.split(df_model$Observed_Attendance, SplitRatio = 0.7)
+
+#Creating train and testd dataset beased on the split
+df_train = subset(df_model_new, split == TRUE)
+df_test = subset(df_model_new, split == FALSE)
+```
+
+
+```{r}
+library(rpart)
+library(rpart.plot)
+
+CART_model<-rpart(Observed_Attendance ~.,df_model_new,method = 'class',control=rpart.control(minsplit=2, minbucket=1, cp=0.001))
+rpart.plot(CART_model,extra=0,type=5,tweak = 1.2)
+```
+
+
+```{r}
+
+prediction_val<-predict(CART_model,df_test,type='class')
+confusionMatrix(prediction_val,factor(df_test$Observed_Attendance))
+
+
+```
+
+```{r}
+colnames(df_model_new)
+```
+
+```{r}
+
+training_logit_model<- glm(Observed_Attendance~Interview_Type+Gender+GotPermission+Industry+ClarityofVenue+Location+Position_to_be_closed+Printouttaken_JDUnderstanding+CallLetterRecieved+Expected_Attendance+dayofweek,family = "binomial",
+                  data=df_balance)
+summary(training_logit_model)
+```
+
+
+```{r}
+null_model<-glm(Observed_Attendance~1,data=df_balance,family = "binomial")
+full_model<-glm(Observed_Attendance~Interview_Type+Gender+GotPermission+Industry+ClarityofVenue+Location+Position_to_be_closed+Printouttaken_JDUnderstanding+CallLetterRecieved+Expected_Attendance+dayofweek,
+                  family = "binomial",
+                  data=df_balance)
+```
+
+
+```{r}
+forward_model<-step(null_model,scope = list(lower=null_model,upper=full_model),direction = "forward")
+summary(forward_model)
+backward_model<-step(full_model,scope = list(lower=null_model,upper=full_model),direction = "backward")
+summary(backward_model)
+```
+
+
+```{r}
+logit_best_model<-glm(Observed_Attendance~Interview_Type+Gender+GotPermission+Industry+ClarityofVenue+Location+Position_to_be_closed+Printouttaken_JDUnderstanding+CallLetterRecieved+Expected_Attendance+dayofweek,
+                  family = "binomial",
+                  data=df_balance)
+
+testing$logit_pred_prob<-predict(logit_best_model,df_model_new,type="response")
+testing$logit_pred_class<-ifelse(testing$logit_pred_prob>0.5,"Yes","No")
+table(testing$logit_pred_class,df_model_new$Observed_Attendance,dnn = c("predicted","actual"))
+```
+
