@@ -427,13 +427,21 @@ rpart.plot(CART_model,extra=0,type=5,tweak = 1.2)
 ```{r}
 
 prediction_val<-predict(CART_model,df_test,type='class')
+typeof(prediction_val)
 confusionMatrix(prediction_val,factor(df_test$Observed_Attendance))
 
 
 ```
 
 ```{r}
-colnames(df_model_new)
+
+
+typeof(prediction_val)
+prediction_val<-as.numeric(prediction_val)
+library(pROC)
+
+colAUC(prediction_val, df_test$Observed_Attendance, plotROC = TRUE)
+
 ```
 
 ```{r}
@@ -466,7 +474,39 @@ logit_best_model<-glm(Observed_Attendance~Interview_Type+Gender+GotPermission+In
                   data=df_balance)
 
 testing$logit_pred_prob<-predict(logit_best_model,df_model_new,type="response")
-testing$logit_pred_class<-ifelse(testing$logit_pred_prob>0.5,"Yes","No")
+testing$logit_pred_class<-ifelse(testing$logit_pred_prob>0.5,1,0)
 table(testing$logit_pred_class,df_model_new$Observed_Attendance,dnn = c("predicted","actual"))
+```
+
+```{r}
+library(AUC)
+typeof(df_model_new$Observed_Attendance)
+testing$logit_pred_class<-as.integer(testing$logit_pred_class)
+colAUC (testing$logit_pred_class, df_model_new$Observed_Attendance, plotROC = TRUE)
+
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
 ```
 
